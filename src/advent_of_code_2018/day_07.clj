@@ -93,6 +93,16 @@
                                 "F" #{}
                                 "B" #{"A"}
                                 "D" #{"A"}
+                                "E" #{"B" "D" "F"}}))
+           (clojure.test/is (= (update-dependencies {"A" #{"C"}
+                                                     "F" #{"C"}
+                                                     "B" #{"A"}
+                                                     "D" #{"A"}
+                                                     "E" #{"B" "D" "F"}} "C")
+                               {"A" #{}
+                                "F" #{}
+                                "B" #{"A"}
+                                "D" #{"A"}
                                 "E" #{"B" "D" "F"}})))}
   [dependencies job]
   (let [dependencies (dissoc dependencies job)]
@@ -149,4 +159,62 @@
 ;
 ;With 5 workers and the 60+ second step durations described above, how long will it take to complete all of the steps?
 
+(defn get-completion-time
+  {:test (fn []
+           (clojure.test/is (= (get-completion-time "A" 0)
+                               61))
+           (clojure.test/is (= (get-completion-time "A" 60)
+                               1)))}
+  [job time-subtraction]
+  (-> job
+      (first)
+      (int)
+      (- 4 time-subtraction)))
 
+(defn can-assign-job?
+  [dependencies workers]
+  (and (get-next-job dependencies)
+       (not (empty? (filter nil? workers)))))
+
+(defn finished?
+  [dependencies workers]
+  (and (empty? dependencies)
+       (empty? (remove nil? workers))))
+
+(defn solve-b
+  {:test (fn []
+           (clojure.test/is (= (solve-b test-input 60 2)
+                               15)))}
+  [input time-subtraction number-of-workers]
+  (reduce (fn [[dependencies workers time] _]
+            (let [[dependencies workers] (reduce (fn [[dependencies workers] worker]
+                                                   (if (nil? worker)
+                                                     [dependencies (conj workers nil)]
+                                                     (let [job (first worker)
+                                                           remaining-time (dec (second worker))]
+                                                       (if (= remaining-time 0)
+                                                         [(update-dependencies dependencies job) (conj workers nil)]
+                                                         [dependencies (conj workers [job remaining-time])]))))
+                                                 [dependencies []]
+                                                 workers)]
+              (cond (finished? dependencies workers)
+                    (reduced time)
+                    (can-assign-job? dependencies workers)
+                    (let [[dependencies workers] (reduce (fn [[dependencies workers] worker]
+                                                           (if-not (nil? worker)
+                                                             [dependencies (conj workers worker)]
+                                                             (if-let [next-job (get-next-job dependencies)]
+                                                               [(dissoc dependencies next-job) (conj workers [next-job (get-completion-time next-job time-subtraction)])]
+                                                               [dependencies (conj workers worker)])))
+                                                         [dependencies []]
+                                                         workers)]
+                      [dependencies workers (inc time)])
+                    :else
+                    [dependencies workers (inc time)])))
+          [(get-dependencies input) (repeat number-of-workers nil) 0]
+          (range)))
+
+(comment
+  (solve-b input 0 5)
+  ;; 1000
+  )
